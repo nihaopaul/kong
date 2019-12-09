@@ -756,6 +756,7 @@ local function parse_listeners(values, flags)
 
     listener.ip = ip.host
     listener.port = ip.port
+    listener.flags = cleaned_flags
     listener.listener = ip.host .. ":" .. ip.port ..
                         (#cleaned_flags == 0 and "" or " " .. cleaned_flags)
 
@@ -1053,7 +1054,7 @@ local function load(path, custom_conf, opts)
   do
     local http_flags = { "ssl", "http2", "proxy_protocol", "deferred",
                          "bind", "reuseport", "backlog=%d+" }
-    local stream_flags = { "proxy_protocol", "bind", "reuseport" }
+    local stream_flags = { "ssl", "proxy_protocol", "bind", "reuseport" }
 
     -- extract ports/listen ips
     conf.proxy_listeners, err = parse_listeners(conf.proxy_listen, http_flags)
@@ -1071,12 +1072,30 @@ local function load(path, custom_conf, opts)
       end
     end
 
-    conf.stream_listeners, err = parse_listeners(conf.stream_listen, stream_flags)
+    local stream_listeners, err = parse_listeners(conf.stream_listen, stream_flags)
     if err then
       return nil, "stream_listen " .. err
     end
 
-    setmetatable(conf.stream_listeners, _nop_tostring_mt)
+    conf.stream_listeners = setmetatable(stream_listeners, _nop_tostring_mt)
+
+    local stream_cleartext_listeners = {}
+    local stream_tls_listeners = {}
+
+    for _, entry in ipairs(stream_listeners) do
+      if entry.flags:find("ssl") then
+        stream_tls_listeners[#stream_tls_listeners + 1] = entry
+
+      else
+        stream_cleartext_listeners[#stream_cleartext_listeners + 1] = entry
+      end
+    end
+
+    conf.stream_cleartext_listeners = stream_cleartext_listeners
+    conf.stream_tls_listeners = stream_tls_listeners
+
+    setmetatable(conf.stream_cleartext_listeners, _nop_tostring_mt)
+    setmetatable(conf.stream_tls_listeners, _nop_tostring_mt)
 
     conf.admin_listeners, err = parse_listeners(conf.admin_listen, http_flags)
     if err then
@@ -1106,15 +1125,6 @@ local function load(path, custom_conf, opts)
     end
 
     setmetatable(conf.cluster_listeners, _nop_tostring_mt)
-  end
-
-  do
-    -- is ssl_preread compiled in OpenResty?
-    conf.ssl_preread_enabled = false
-    local nginx_configuration = ngx.config.nginx_configure()
-    if nginx_configuration:find("with-stream_ssl_preread_module", 1, true) then
-      conf.ssl_preread_enabled = true
-    end
   end
 
   do

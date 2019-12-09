@@ -744,6 +744,7 @@ end
 local balancer_prepare
 do
   local get_certificate = certificate.get_certificate
+  local subsystem = ngx.config.subsystem
 
   function balancer_prepare(ctx, scheme, host_type, host, port,
                             service, route)
@@ -791,6 +792,13 @@ do
           log(ERR, "unable to apply upstream client TLS certificate ",
                    client_certificate.id, ": ", err)
         end
+      end
+    end
+
+    if subsystem == "stream" and scheme == "tcp" then
+      local res, err = kong.service.request.disable_tls()
+      if not res then
+        log(ERR, "unable to disable upstream TLS handshake: ", err)
       end
     end
   end

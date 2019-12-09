@@ -67,9 +67,10 @@ upstream kong_upstream {
     }
 }
 
+> if #stream_cleartext_listeners > 0 then
 server {
-> for i = 1, #stream_listeners do
-    listen $(stream_listeners[i].listener);
+> for _, entry in ipairs(stream_cleartext_listeners) do
+    listen $(entry.listener);
 > end
 
     access_log ${{PROXY_ACCESS_LOG}} basic;
@@ -84,10 +85,6 @@ server {
     $(el.name) $(el.value);
 > end
 
-> if ssl_preread_enabled then
-    ssl_preread on;
-> end
-
     preread_by_lua_block {
         Kong.preread()
     }
@@ -98,4 +95,44 @@ server {
         Kong.log()
     }
 }
+> end -- #stream_cleartext_listeners > 0
+
+> if #stream_tls_listeners > 0 then
+server {
+> for _, entry in ipairs(stream_tls_listeners) do
+    listen $(entry.listener);
+> end
+
+    access_log ${{PROXY_ACCESS_LOG}} basic;
+    error_log ${{PROXY_ERROR_LOG}} ${{LOG_LEVEL}};
+
+> for i = 1, #trusted_ips do
+    set_real_ip_from   $(trusted_ips[i]);
+> end
+
+    # injected nginx_sproxy_* directives
+> for _, el in ipairs(nginx_sproxy_directives) do
+    $(el.name) $(el.value);
+> end
+
+    ssl_preread on;
+
+    ssl_certificate ${{SSL_CERT}};
+    ssl_certificate_key ${{SSL_CERT_KEY}};
+    ssl_certificate_by_lua_block {
+        Kong.ssl_certificate()
+    }
+
+    preread_by_lua_block {
+        Kong.preread()
+    }
+
+    proxy_pass kong_upstream;
+    proxy_ssl on;
+
+    log_by_lua_block {
+        Kong.log()
+    }
+}
+> end -- #stream_tls_listeners > 0
 ]]
