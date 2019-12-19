@@ -444,18 +444,21 @@ end
 local get_plugin do
   local loaded_plugins = {}
 
+  local function get_plugin_info(name)
+    local cmd = string.format("bin/go-pluginserver -dir %q -dump %q",
+        kong.configuration.go_plugins_dir, name)
+
+    local d = assert(io.popen(cmd)):read("*a")
+    return assert(msgpack.unpack(d))
+  end
+
   function get_plugin(plugin_name)
     local plugin = loaded_plugins[plugin_name]
     if plugin and plugin.PRIORITY then
       return plugin
     end
 
-    set_plugin_dir(kong.configuration.go_plugins_dir)
-    local plugin_info, err = rpc_call("plugin.GetPluginInfo", plugin_name)
-    if not plugin_info then
-      kong.log.err("calling GetPluginInfo: ", err)
-      return nil, err
-    end
+    local plugin_info = get_plugin_info(plugin_name)
 
     plugin = {
       PRIORITY = plugin_info.Priority,
