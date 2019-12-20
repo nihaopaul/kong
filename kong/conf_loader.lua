@@ -756,7 +756,6 @@ local function parse_listeners(values, flags)
 
     listener.ip = ip.host
     listener.port = ip.port
-    listener.flags = cleaned_flags
     listener.listener = ip.host .. ":" .. ip.port ..
                         (#cleaned_flags == 0 and "" or " " .. cleaned_flags)
 
@@ -1072,30 +1071,20 @@ local function load(path, custom_conf, opts)
       end
     end
 
-    local stream_listeners, err = parse_listeners(conf.stream_listen, stream_flags)
+    conf.stream_listeners, err = parse_listeners(conf.stream_listen, stream_flags)
     if err then
       return nil, "stream_listen " .. err
     end
 
-    conf.stream_listeners = setmetatable(stream_listeners, _nop_tostring_mt)
+    setmetatable(conf.stream_listeners, _nop_tostring_mt)
+    conf.stream_proxy_ssl_enabled = false
 
-    local stream_cleartext_listeners = {}
-    local stream_tls_listeners = {}
-
-    for _, entry in ipairs(stream_listeners) do
-      if entry.flags:find("ssl") then
-        stream_tls_listeners[#stream_tls_listeners + 1] = entry
-
-      else
-        stream_cleartext_listeners[#stream_cleartext_listeners + 1] = entry
+    for _, listener in ipairs(conf.stream_listeners) do
+      if listener.ssl == true then
+        conf.stream_proxy_ssl_enabled = true
+        break
       end
     end
-
-    conf.stream_cleartext_listeners = stream_cleartext_listeners
-    conf.stream_tls_listeners = stream_tls_listeners
-
-    setmetatable(conf.stream_cleartext_listeners, _nop_tostring_mt)
-    setmetatable(conf.stream_tls_listeners, _nop_tostring_mt)
 
     conf.admin_listeners, err = parse_listeners(conf.admin_listen, http_flags)
     if err then

@@ -44,9 +44,6 @@ for _, strategy in helpers.each_strategy() do
       local tcp = require "socket".tcp()
       assert(tcp:connect(helpers.get_proxy_ip(false), 19001))
 
-      -- TODO: we need to get rid of the next line!
-      assert(tcp:send(MESSAGE))
-
       local body = assert(tcp:receive("*a"))
       assert.equal("ok", body)
 
@@ -382,10 +379,9 @@ for _, strategy in helpers.each_strategy() do
     end)
 
     it("#stream reports tcp streams", function()
-      local tcp = require "socket".tcp()
+      local tcp = ngx.socket.tcp()
       assert(tcp:connect(helpers.get_proxy_ip(false), 19000))
 
-      -- TODO: we need to get rid of the next line!
       assert(tcp:send(MESSAGE))
 
       local body = assert(tcp:receive("*a"))
@@ -418,9 +414,6 @@ for _, strategy in helpers.each_strategy() do
       tcp:sni("this-is-needed.test")
 
       assert(tcp:dohandshake())
-
-      -- TODO: we need to get rid of the next line!
-      assert(tcp:send(MESSAGE))
 
       local body = assert(tcp:receive("*a"))
       assert.equal(MESSAGE, body)
