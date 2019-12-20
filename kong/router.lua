@@ -1722,7 +1722,7 @@ function _M.new(routes)
       local dst_port = tonumber(var.server_port, 10)
       local sni = ctx.sni_server_name
 
-      return find_route(nil, nil, nil, "tcp",
+      return find_route(nil, nil, nil, nil,
                         src_ip, src_port,
                         dst_ip, dst_port,
                         sni)
