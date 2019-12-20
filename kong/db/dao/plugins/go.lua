@@ -445,7 +445,8 @@ local get_plugin do
   local loaded_plugins = {}
 
   local function get_plugin_info(name)
-    local cmd = string.format("bin/go-pluginserver -dir %q -dump %q",
+    local cmd = string.format(
+        "bin/go-pluginserver -plugins-directory %q -dump-plugin-info %q",
         kong.configuration.go_plugins_dir, name)
 
     local d = assert(io.popen(cmd)):read("*a")
