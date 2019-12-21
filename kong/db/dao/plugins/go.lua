@@ -1,6 +1,7 @@
 local ffi = require("ffi")
 local cjson = require("cjson.safe")
 local ngx_ssl = require("ngx.ssl")
+local ngx_pipe = require "ngx.pipe"
 local basic_serializer = require "kong.plugins.log-serializers.basic"
 local msgpack = require "MessagePack"
 
@@ -33,6 +34,45 @@ do
   function go.socket_path()
     __socket_path = __socket_path or kong.configuration.prefix .. "/go_pluginserver.sock"
     return __socket_path
+  end
+end
+
+do
+  local pluginserver_proc
+
+  function go.manage_pluginserver()
+    if pluginserver_proc then
+      -- already being managed
+      return
+    end
+
+    if ngx.worker.id() ~= 0 then
+      -- only one manager
+      pluginserver_proc = true
+      return
+    end
+
+    ngx_timer_at(0, function ()
+      while true do
+        kong.log.notice("Starting go-pluginserver")
+        pluginserver_proc = assert(ngx_pipe.spawn({
+          "/home/javier/devel/kong_dev/kong-worktrees/pluginclient/bin/go-pluginserver",
+          "-socket", go.socket_path(),
+          "-plugins-directory", kong.configuration.go_plugins_dir,
+        }, {
+          environ = { "PATH=" .. kong.configuration.prefix },
+        }))
+
+        while true do
+          local ok, reason, status = pluginserver_proc:wait()
+          if ok ~= nil or reason == "exited" then
+            kong.log.notice ("go-pluginserver terminated: ", tostring(reason), " ", tostring(status))
+            break
+          end
+        end
+      end
+    end)
+
   end
 end
 
@@ -151,7 +191,14 @@ do
       return ffi_sock(go.socket_path())
     end
 
-    return ngx.socket.connect("unix:" .. go.socket_path())
+    local conn, err = ngx.socket.connect("unix:" .. go.socket_path())
+    if not conn and err == "connection refused" then
+      go.manage_pluginserver()
+      ngx.sleep(0.1)
+      conn, err = ngx.socket.connect("unix:" .. go.socket_path())
+    end
+
+    return conn, err
   end
 end
 go.get_connection = get_connection
@@ -159,13 +206,10 @@ go.get_connection = get_connection
 
 -- This is the MessagePack-RPC implementation
 local rpc_call
-local set_plugin_dir
 do
   local msg_id = 0
 
   local notifications = {}
-
-  local current_plugin_dir
 
   do
     local pluginserver_pid
@@ -173,7 +217,6 @@ do
       n = tonumber(n)
       if pluginserver_pid and n ~= pluginserver_pid then
         reset_instances()
-        current_plugin_dir = nil
       end
 
       pluginserver_pid = n
@@ -184,7 +227,12 @@ do
     msg_id = msg_id + 1
     local my_msg_id = msg_id
 
-    local c = assert(get_connection())
+    local c, err = get_connection()
+    if not c then
+      kong.log.err("trying to connect: ", err)
+      return nil, err
+    end
+
     local bytes, err = c:send(mp_pack({0, my_msg_id, method, {...}}))
     if not bytes then
       c:setkeepalive()
@@ -221,20 +269,6 @@ do
         return data[4]
       end
     end
-  end
-
-  function set_plugin_dir(dir)
-    if dir == current_plugin_dir then
-      return
-    end
-
-    local res, err = rpc_call("plugin.SetPluginDir", dir)
-    if not res then
-      kong.log.err("Setting Go plugin dir: ", err)
-      error(err)
-    end
-
-    current_plugin_dir = dir
   end
 end
 
@@ -414,7 +448,6 @@ do
       instance_info.id = nil
     end
 
-    set_plugin_dir(kong.configuration.go_plugins_dir)
     local status, err = rpc_call("plugin.StartInstance", {
       Name = plugin_name,
       Config = cjson_encode(conf)
