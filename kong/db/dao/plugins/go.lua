@@ -1,7 +1,6 @@
 local ffi = require("ffi")
 local cjson = require("cjson.safe")
 local ngx_ssl = require("ngx.ssl")
-local ngx_pipe = require "ngx.pipe"
 local basic_serializer = require "kong.plugins.log-serializers.basic"
 local msgpack = require "MessagePack"
 
@@ -53,6 +52,8 @@ do
     end
 
     ngx_timer_at(0, function ()
+      local ngx_pipe = require "ngx.pipe"
+
       while true do
         kong.log.notice("Starting go-pluginserver")
         pluginserver_proc = assert(ngx_pipe.spawn({
@@ -191,14 +192,7 @@ do
       return ffi_sock(go.socket_path())
     end
 
-    local conn, err = ngx.socket.connect("unix:" .. go.socket_path())
-    if not conn and err == "connection refused" then
-      go.manage_pluginserver()
-      ngx.sleep(0.1)
-      conn, err = ngx.socket.connect("unix:" .. go.socket_path())
-    end
-
-    return conn, err
+    return ngx.socket.connect("unix:" .. go.socket_path())
   end
 end
 go.get_connection = get_connection
