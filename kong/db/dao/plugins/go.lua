@@ -57,7 +57,7 @@ do
       while true do
         kong.log.notice("Starting go-pluginserver")
         pluginserver_proc = assert(ngx_pipe.spawn({
-          "/home/javier/devel/kong_dev/kong-worktrees/pluginclient/bin/go-pluginserver",
+          kong.configuration.prefix .. "/bin/go-pluginserver",
           "-socket", go.socket_path(),
           "-plugins-directory", kong.configuration.go_plugins_dir,
         }, {
